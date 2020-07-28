@@ -1,0 +1,39 @@
+#!/bin/bash
+
+wget -q --load-cookies cookie.txt "https://connect.garmin.com/modern/proxy/activitylist-service/activities/search/activities?limit=1500&start=0" -O activities.json
+
+if [ -s activities.json ]
+then
+	jq '.[] | .activityId' activities.json | sort > activities.latest
+	comm -3 --output-delimiter=+ activities.db activities.latest | cut -d"+" -f2 > activities.delta
+
+	if [ -s activities.delta ]
+	then
+		for a in `cat activities.delta` 
+		do
+			wget -q --load-cookies cookie.txt "https://connect.garmin.com/modern/proxy/download-service/export/gpx/activity/$a" 
+			if [ -s $a ]; then
+				datum=`cat $a | grep "<time>" | head -1 | cut -d">" -f2 | cut -d"T" -f1`
+				garnr=`echo $a | cut -d'.' -f1 | cut -d"_" -f2`
+				sport=`cat $a |  grep "<type>" | cut -d">" -f2 | cut -d"<" -f1`
+				mv $a ${datum}_${garnr}_${sport}.gpx
+				echo -n "."
+			else
+				echo -n '{error:'$a'}'
+				sed '/'$a'/d' activities.latest > activities.latest_
+				mv activities.latest_  activities.latest
+			fi
+		done
+		echo "."
+		count=`cat activities.delta | wc -l`
+		echo "$count activities found."
+	else
+		echo "No new activities"
+	fi
+fi
+
+mv activities.latest activities.db
+rm -f activities.delta activities.downloaded activities.json
+
+
+
