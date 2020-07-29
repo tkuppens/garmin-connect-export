@@ -1,17 +1,22 @@
 #!/bin/bash
 
-wget -q --load-cookies cookie.txt "https://connect.garmin.com/modern/proxy/activitylist-service/activities/search/activities?limit=1500&start=0" -O activities.json
+wget --load-cookies $1 "https://connect.garmin.com/modern/proxy/activitylist-service/activities/search/activities?limit=1500&start=0" -O $1.json 2> /tmp/wget_out 
+grep ERROR\  /tmp/wget_out 
+rm -f /tmp/wget_out
 
-if [ -s activities.json ]
-then
-	jq '.[] | .activityId' activities.json | sort > activities.latest
-	comm -3 --output-delimiter=+ activities.db activities.latest | cut -d"+" -f2 > activities.delta
+if [ -f $1.json ]; then 
 
-	if [ -s activities.delta ]
-	then
-		for a in `cat activities.delta` 
+	if [ ! -f $1.db ]; then
+		>  $1.db
+	fi
+	
+	jq '.[] | .activityId' $1.json | sort > $1.latest
+	comm -3 --output-delimiter=+ $1.db $1.latest | cut -d"+" -f2 > $1.delta
+
+	if [ -s $1.delta ]; then
+		for a in `cat $1.delta` 
 		do
-			wget -q --load-cookies cookie.txt "https://connect.garmin.com/modern/proxy/download-service/export/gpx/activity/$a" 
+			wget -q --load-cookies $1 "https://connect.garmin.com/modern/proxy/download-service/export/gpx/activity/$a" 
 			if [ -s $a ]; then
 				datum=`cat $a | grep "<time>" | head -1 | cut -d">" -f2 | cut -d"T" -f1`
 				garnr=`echo $a | cut -d'.' -f1 | cut -d"_" -f2`
@@ -20,20 +25,20 @@ then
 				echo -n "."
 			else
 				echo -n '{error:'$a'}'
-				sed '/'$a'/d' activities.latest > activities.latest_
-				mv activities.latest_  activities.latest
+				sed '/'$a'/d' $1.latest > $1.latest_
+				mv $1.latest_  $1.latest
 			fi
 		done
 		echo "."
-		count=`cat activities.delta | wc -l`
+		count=`cat $1.delta | wc -l`
 		echo "$count activities found."
 	else
 		echo "No new activities"
 	fi
+
+	mv $1.latest $1.db
+	rm -f $1.delta $1.downloaded $1.json
+
 fi
-
-mv activities.latest activities.db
-rm -f activities.delta activities.downloaded activities.json
-
 
 
