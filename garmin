@@ -8,6 +8,7 @@ if [ -f $1.json ]; then
 
 	if [ ! -f $1.db ]; then
 		>  $1.db
+		echo "activityId, activityName, startTimeLocal, activityType, Distance (km), Time (min), Elapsed Time (ms), Moving Time (s), Elevation Gain (m), Elevation Loss (m), averageSpeed, maxSpeed, calories, averageHR, maxHR, timeZoneId, beginTimestamp, sportTypeId, deviceId, Min. Elevation, Max. Elevation, maxVerticalSpeed, locationName, lapCount, minActivityLapDuration" > $1.csv
 	fi
 	
 	jq '.[] | .activityId' $1.json | sort > $1.latest
@@ -18,10 +19,11 @@ if [ -f $1.json ]; then
 		do
 			wget -q --load-cookies $1 "https://connect.garmin.com/modern/proxy/download-service/export/gpx/activity/$a" 
 			if [ -s $a ]; then
-				datum=`cat $a | grep "<time>" | head -1 | cut -d">" -f2 | cut -d"T" -f1`
-				garnr=`echo $a | cut -d'.' -f1 | cut -d"_" -f2`
-				sport=`cat $a |  grep "<type>" | cut -d">" -f2 | cut -d"<" -f1`
-				mv $a ${datum}_${garnr}_${sport}.gpx
+				epoch=`jq -r ".[] | select(.activityId==$a) | .beginTimestamp/1000" $1.json`
+				datum=`date -d @${epoch} +"%Y%m%d"`
+				sport=`jq -r ".[] | select(.activityId==$a) | .activityType.typeKey" $1.json`
+				mv $a ${datum}_${a}_${sport}.gpx
+				jq ".[] | select(.activityId==$a)" $1.json | jq -r ' [.activityId,.activityName,.startTimeLocal,.activityType.typeKey,.distance/1000,.duration/60,.elapsedDuration,.movingDuration,.elevationGain,.elevationLoss,.averageSpeed,.maxSpeed,.calories,.averageHR,.maxHR,.timeZoneId,.beginTimestamp,.sportTypeId,.deviceId,.minElevation,.maxElevation,.maxVerticalSpeed,.locationName,.lapCount,.minActivityLapDuration] | @csv' >> $1.csv
 				echo -n "."
 			else
 				echo -n '{error:'$a'}'
