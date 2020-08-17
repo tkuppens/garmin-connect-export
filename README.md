@@ -14,9 +14,10 @@ Use
 
 garmin [cookiefile]
 
-cookiefile: must contain the Netscape-style cookie. The name of the cookie file will also be the name of the local activity db.  
+cookiefile: must contain the Netscape-style cookie.   
 
 Downloaded gpx file will be named [date][activity_id][activity_type].gpx 
 
 A csv stats list will be created named [cookiefile].csv
+The local activity db will be named [cookiefile].db
 
