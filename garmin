@@ -1,8 +1,8 @@
 #!/bin/bash
 
-fullcsv=1
+fullcsv=0
 
-garmin_tot=2000  ### if you have more than 2000 activities in Garmin Connect you should use a higher value
+garmin_tot=1500  ### if you have more than 1500 activities in Garmin Connect you should use a higher value
 
 jq1="if .distance then (.distance/1000) else (.distance) end"
 jq2="if .duration then (.duration/60) else (.duration) end"
@@ -14,18 +14,19 @@ jq7="if .minElevation then (.minElevation/100) else (.minElevation) end"
 jq8="if .maxElevation then (.maxElevation/100) else (.maxElevation) end"
 csv_jq="[.activityId,.activityName,.startTimeLocal,.activityType.typeKey,$jq1,$jq2,$jq3,$jq4,.elevationGain,.elevationLoss,$jq5,$jq6,.calories,.averageHR,.maxHR,.timeZoneId,.sportTypeId,.deviceId,$jq7,$jq8,.locationName,.lapCount]"
 
-csv_echo="activityId, activityName, startTimeLocal, activityType, Distance (km), Time (min), Elapsed Time (min), Moving Time (min), Elevation Gain (m), Elevation Loss (m), averageSpeed (km/h), maxSpeed (km/h), calories (kcal), averageHR (BPM), maxHR (BPM), timeZoneId, sportTypeId, deviceId, Min. Elevation (m), Max. Elevation (m), locationName, lapCount"
+csv_echo="activityId,Description,StartTimeLocal,activityType,Distance (km),Time (min),Elapsed Time (min),Moving Time (min),Elevation Gain (m),Elevation Loss (m),averageSpeed (km/h),maxSpeed (km/h),calories (kcal),averageHR (BPM),maxHR (BPM),timeZoneId,sportTypeId,deviceId,Min. Elevation (m),Max. Elevation (m),locationName,lapCount"
 
-wget --load-cookies $1 "https://connect.garmin.com/modern/proxy/activitylist-service/activities/search/activities?limit=${garmin_tot}&start=0" -O $1.json 2> /tmp/wget_out 
-test=`grep "ERROR"  /tmp/wget_out` 
+> /tmp/wget_out
 rm -f $1.delta $1.latest 
 
-if [ -n "$test" ] || [ ! -f $1.json ]; then
+wget --load-cookies $1 "https://connect.garmin.com/modern/proxy/activitylist-service/activities/search/activities?limit=${garmin_tot}&start=0" -O $1.json 2> /tmp/wget_out 
+
+if [ ! -f $1.json ] ; then
 	echo "Error - Cookie?"
+	cat /tmp/wget_out
 	rm -f /tmp/wget_out
 	exit 1
 fi
-
 
 if [ -s $1.json ]; then 
 
