@@ -1,29 +1,69 @@
 #!/bin/bash
 
-wget --load-cookies $1 "https://connect.garmin.com/modern/proxy/activitylist-service/activities/search/activities?limit=1500&start=0" -O $1.json 2> /tmp/wget_out 
-grep ERROR\  /tmp/wget_out 
-rm -f /tmp/wget_out
+fullcsv=1
 
-if [ -f $1.json ]; then 
+garmin_tot=2000  ### if you have more than 2000 activities in Garmin Connect you should use a higher value
+
+jq1="if .distance then (.distance/1000) else (.distance) end"
+jq2="if .duration then (.duration/60) else (.duration) end"
+jq3="if .elapsedDuration then (.elapsedDuration/60000) else (.elapsedDuration) end"
+jq4="if .movingDuration then (.movingDuration/60) else (.movingDuration) end"
+jq5="if .averageSpeed then (.averageSpeed*3.6) else (.averageSpeed) end"
+jq6="if .maxSpeed then (.maxSpeed*3.6) else (.maxSpeed) end"
+jq7="if .minElevation then (.minElevation/100) else (.minElevation) end"
+jq8="if .maxElevation then (.maxElevation/100) else (.maxElevation) end"
+csv_jq="[.activityId,.activityName,.startTimeLocal,.activityType.typeKey,$jq1,$jq2,$jq3,$jq4,.elevationGain,.elevationLoss,$jq5,$jq6,.calories,.averageHR,.maxHR,.timeZoneId,.sportTypeId,.deviceId,$jq7,$jq8,.locationName,.lapCount]"
+
+csv_echo="activityId, activityName, startTimeLocal, activityType, Distance (km), Time (min), Elapsed Time (min), Moving Time (min), Elevation Gain (m), Elevation Loss (m), averageSpeed (km/h), maxSpeed (km/h), calories (kcal), averageHR (BPM), maxHR (BPM), timeZoneId, sportTypeId, deviceId, Min. Elevation (m), Max. Elevation (m), locationName, lapCount"
+
+wget --load-cookies $1 "https://connect.garmin.com/modern/proxy/activitylist-service/activities/search/activities?limit=${garmin_tot}&start=0" -O $1.json 2> /tmp/wget_out 
+test=`grep "ERROR"  /tmp/wget_out` 
+rm -f $1.delta $1.latest 
+
+if [ -n "$test" ] || [ ! -f $1.json ]; then
+	echo "Error - Cookie?"
+	rm -f /tmp/wget_out
+	exit 1
+fi
+
+
+if [ -s $1.json ]; then 
 
 	if [ ! -f $1.db ]; then
 		>  $1.db
-		echo "activityId, activityName, startTimeLocal, activityType, Distance (km), Time (min), Elapsed Time (ms), Moving Time (s), Elevation Gain (m), Elevation Loss (m), averageSpeed, maxSpeed, calories, averageHR, maxHR, timeZoneId, beginTimestamp, sportTypeId, deviceId, Min. Elevation, Max. Elevation, maxVerticalSpeed, locationName, lapCount, minActivityLapDuration" > $1.csv
+		echo "initialising local db for user $1"
+		echo $csv_echo > $1.csv
 	fi
-	
+
 	jq '.[] | .activityId' $1.json | sort > $1.latest
 	comm -3 --output-delimiter=+ $1.db $1.latest | cut -d"+" -f2 > $1.delta
 
-	if [ -s $1.delta ]; then
-		for a in `cat $1.delta` 
-		do
+	n=1
+	if [ "$fullcsv" = "1" ]; then
+		count=`cat $1.latest | wc -l`
+		echo "$count activities found."
+		datum=`date +"%Y%m%d"`
+		echo $csv_echo > $1_${datum}.csv
+		for a in `cat $1.latest`; do 
+			jq ".[] | select(.activityId==$a)" $1.json | jq -r " $csv_jq | @csv" >> $1_${datum}.csv
+			echo -n "."
+			((n++))
+			if ! (( $n % 100 )) ; then
+				echo -n $n
+			fi
+		done
+		echo " "
+	elif [ -s $1.delta ]; then
+		count=`cat $1.delta | wc -l`
+		echo "$count activities found."
+		for a in `cat $1.delta`; do
 			wget -q --load-cookies $1 "https://connect.garmin.com/modern/proxy/download-service/export/gpx/activity/$a" 
 			if [ -s $a ]; then
 				epoch=`jq -r ".[] | select(.activityId==$a) | .beginTimestamp/1000" $1.json`
 				datum=`date -d @${epoch} +"%Y%m%d"`
 				sport=`jq -r ".[] | select(.activityId==$a) | .activityType.typeKey" $1.json`
 				mv $a ${datum}_${a}_${sport}.gpx
-				jq ".[] | select(.activityId==$a)" $1.json | jq -r ' [.activityId,.activityName,.startTimeLocal,.activityType.typeKey,.distance/1000,.duration/60,.elapsedDuration,.movingDuration,.elevationGain,.elevationLoss,.averageSpeed,.maxSpeed,.calories,.averageHR,.maxHR,.timeZoneId,.beginTimestamp,.sportTypeId,.deviceId,.minElevation,.maxElevation,.maxVerticalSpeed,.locationName,.lapCount,.minActivityLapDuration] | @csv' >> $1.csv
+				jq ".[] | select(.activityId==$a)" $1.json | jq -r " $csv_jq | @csv" >> $1.csv
 				echo -n "."
 			else
 				echo -n '{error:'$a'}'
@@ -31,16 +71,13 @@ if [ -f $1.json ]; then
 				mv $1.latest_  $1.latest
 			fi
 		done
-		echo "."
-		count=`cat $1.delta | wc -l`
-		echo "$count activities found."
+		echo " "
 	else
-		echo "No new activities"
+		echo "No new activities found"
 	fi
 
 	mv $1.latest $1.db
-	rm -f $1.delta $1.downloaded $1.json
+	rm -f $1.delta $1.json
 
 fi
-
 
